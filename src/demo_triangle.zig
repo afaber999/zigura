@@ -36,9 +36,9 @@ pub fn render(self: *Self, dt: f32) bool {
     _ = dt;
     self.canvas.clear(Canvas.from_rgba(0x20, 0x20, 0x20, 0xFF));
 
-    const p1 = Canvas.Point.init(100,100);
-    const p2 = Canvas.Point.init(150,200);
-    const p3 = Canvas.Point.init( 80,300);
+    const p1 = Canvas.Vertex.init(100,100);
+    const p2 = Canvas.Vertex.init(50,200);
+    const p3 = Canvas.Vertex.init( 80,300);
 
     self.canvas.fillTriangle(p1,p2,p3);
     return true;

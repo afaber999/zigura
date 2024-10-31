@@ -1,43 +1,8 @@
 const std = @import("std");
+pub const Vertex = @import("Vertex.zig");
 const log = @import("common.zig").log;
 pub const Self = @This();
 pub const PixelType = u32;
-
-
-// pub const ScanRange = struct {
-//     xs: usize,
-//     xe: usize,
-
-//     pub fn init(xs: usize, xe: usize) ScanRange {
-//         return ScanRange{
-//             .xs = xs,
-//             .xe = xe,
-//         };
-//     }
-// };
-
-pub const Point = struct {
-    x: i32,
-    y: i32,
-
-    pub fn init(x: i32, y: i32) Point {
-        return Point{
-            .x = x,
-            .y = y,
-        };
-    }
-    pub fn sub(p1: *const Point, p2: *const Point) Point {
-        return Point.init(p1.x - p2.x, p1.y - p2.y);
-    }
-
-    pub fn area_times2(p0: *const Point, p1: *const Point, p2: *const Point) i32 {
-        const d10 = p1.sub(p0);
-        const d20 = p2.sub(p0);
-        return d10.x * d20.y - d10.y * d20.x;
-    }
-};
-
-
 
 
 width: usize,
@@ -47,6 +12,15 @@ pixels: []PixelType,
 scanbuffer_left: [] usize,
 scanbuffer_right: [] usize,
 allocator : ?std.mem.Allocator = null,
+
+
+fn f32toi32(f: f32) i32 {
+    return @intFromFloat(f);
+}
+
+fn f32To(T:type,f: f32) T {
+    return @intFromFloat(f);
+}
 
 pub fn init(allocator: std.mem.Allocator, width: usize, height: usize, stride: usize) !Self {
     const pixels = try allocator.alloc(PixelType, width * height);
@@ -179,18 +153,18 @@ pub fn fillShape(self : *Self, y_min:usize, y_max : usize ) void {
 }
 
 
-pub fn scanConvertLine( self:*Self, minY : *const Point, maxY: *const Point, right_side : bool) void {
+pub fn scanConvertLine( self:*Self, minY : *const Vertex, maxY: *const Vertex, right_side : bool) void {
 
-    const ys = minY.y;
-    const ye = maxY.y;
+    const ys = f32toi32(minY.y);
+    const ye = f32toi32(maxY.y);
 
-    const xs = minY.x;
-    const xe = maxY.x;
+    const xs = f32toi32(minY.x);
+    const xe = f32toi32(maxY.x);
 
     const dx = xe - xs;
     const dy = ye - ys;
 
-    if (dy<=0) return;
+    if (dy<=0.0) return;
 
     const scan_buffer = if (right_side) self.scanbuffer_right else self.scanbuffer_left;
 
@@ -206,7 +180,7 @@ pub fn scanConvertLine( self:*Self, minY : *const Point, maxY: *const Point, rig
 
 }
 
-pub fn scanConvertTriangle( self:*Self, minY: *const Point, midY:*const Point, maxY:*const Point, ccw : bool) void {
+pub fn scanConvertTriangle( self:*Self, minY: *const Vertex, midY:*const Vertex, maxY:*const Vertex, ccw : bool) void {
 
     self.scanConvertLine(minY,maxY,ccw);
     self.scanConvertLine(minY,midY,!ccw);
@@ -214,20 +188,20 @@ pub fn scanConvertTriangle( self:*Self, minY: *const Point, midY:*const Point, m
 }
 
 
-pub fn fillTriangle( self:*Self, minY:Point, midY:Point, maxY:Point) void {
+pub fn fillTriangle( self:*Self, minY: Vertex, midY: Vertex, maxY: Vertex) void {
 
-    var p0 : *const Point = &minY;
-    var p1 : *const Point = &midY;
-    var p2 : *const Point  = &maxY;
+    var p0 : *const Vertex = &minY;
+    var p1 : *const Vertex = &midY;
+    var p2 : *const Vertex  = &maxY;
 
-    if (p1.y < p0.y) std.mem.swap(*const Point, &p1, &p0);
-    if (p2.y < p1.y) std.mem.swap(*const Point, &p2, &p1);
-    if (p1.y < p0.y) std.mem.swap(*const Point, &p1, &p0);
+    if (p1.y < p0.y) std.mem.swap(*const Vertex, &p1, &p0);
+    if (p2.y < p1.y) std.mem.swap(*const Vertex, &p2, &p1);
+    if (p1.y < p0.y) std.mem.swap(*const Vertex, &p1, &p0);
 
-    const area = Point.area_times2(p0,p2,p1);
-    const ccw  = (area >= 0);
+    const area = Vertex.triangleArea(p0,p2,p1);
+    const ccw  = (area >= 0.0);
 
     self.scanConvertTriangle(p0,p1,p2,ccw);
     //std.debug.print("======================== filling shape {} {}\n", .{p0.y, p2.y});
-    self.fillShape(@intCast(p0.y),@intCast(p2.y));
+    self.fillShape(@intFromFloat(p0.y),@intFromFloat(p2.y));
 }
