@@ -1,5 +1,8 @@
 const std = @import("std");
 pub const Vertex = @import("Vertex.zig");
+pub const Matrix4f = Vertex.Matrix4f;
+pub const Vector4f = Vertex.Vector4f;
+
 const log = @import("common.zig").log;
 pub const Self = @This();
 pub const PixelType = u32;
@@ -11,8 +14,8 @@ stride: usize,
 pixels: []PixelType,
 scanbuffer_left: [] usize,
 scanbuffer_right: [] usize,
+screen_transform : Matrix4f,
 allocator : ?std.mem.Allocator = null,
-
 
 fn f32toi32(f: f32) i32 {
     return @intFromFloat(f);
@@ -30,6 +33,11 @@ pub fn init(allocator: std.mem.Allocator, width: usize, height: usize, stride: u
     const scanbuffer_right = try allocator.alloc(usize,height);
     errdefer allocator.free(scanbuffer_right);
 
+    const hw  = @as(f32,@floatFromInt(width/2));
+    const hh  = @as(f32,@floatFromInt(height/2));
+    
+    const screen_transform = Matrix4f.createScreenTransform(hw,hh);
+
     return .{
         .width = width,
         .height = height,
@@ -37,6 +45,7 @@ pub fn init(allocator: std.mem.Allocator, width: usize, height: usize, stride: u
         .pixels = pixels,
         .scanbuffer_left = scanbuffer_left,
         .scanbuffer_right = scanbuffer_right,
+        .screen_transform = screen_transform,
         .allocator = allocator,
     };
 }
@@ -153,7 +162,7 @@ pub fn fillShape(self : *Self, y_min:usize, y_max : usize ) void {
 }
 
 
-pub fn scanConvertLine( self:*Self, minY : *const Vertex, maxY: *const Vertex, right_side : bool) void {
+pub fn scanConvertLine( self:*Self, minY : *const Vector4f, maxY: *const Vector4f, right_side : bool) void {
 
     const ys = f32toi32(minY.y);
     const ye = f32toi32(maxY.y);
@@ -180,7 +189,7 @@ pub fn scanConvertLine( self:*Self, minY : *const Vertex, maxY: *const Vertex, r
 
 }
 
-pub fn scanConvertTriangle( self:*Self, minY: *const Vertex, midY:*const Vertex, maxY:*const Vertex, ccw : bool) void {
+pub fn scanConvertTriangle( self:*Self, minY: *const Vector4f, midY:*const Vector4f, maxY:*const Vector4f, ccw : bool) void {
 
     self.scanConvertLine(minY,maxY,ccw);
     self.scanConvertLine(minY,midY,!ccw);
@@ -188,17 +197,23 @@ pub fn scanConvertTriangle( self:*Self, minY: *const Vertex, midY:*const Vertex,
 }
 
 
-pub fn fillTriangle( self:*Self, minY: Vertex, midY: Vertex, maxY: Vertex) void {
+pub fn fillTriangle( self:*Self, v1: Vertex, v2: Vertex, v3: Vertex) void {
 
-    var p0 : *const Vertex = &minY;
-    var p1 : *const Vertex = &midY;
-    var p2 : *const Vertex  = &maxY;
+   // const vt1 = self.screen_transform.transform(v1.position);
 
-    if (p1.y < p0.y) std.mem.swap(*const Vertex, &p1, &p0);
-    if (p2.y < p1.y) std.mem.swap(*const Vertex, &p2, &p1);
-    if (p1.y < p0.y) std.mem.swap(*const Vertex, &p1, &p0);
+    const vt1 = self.screen_transform.transform(&v1.position).perspectiveDivide();
+    const vt2 = self.screen_transform.transform(&v2.position).perspectiveDivide();
+    const vt3 = self.screen_transform.transform(&v3.position).perspectiveDivide();
+    
+    var p0 : *const Vector4f = &vt1;
+    var p1 : *const Vector4f = &vt2;
+    var p2 : *const Vector4f = &vt3;
 
-    const area = Vertex.triangleArea(p0,p2,p1);
+    if (p1.y < p0.y) std.mem.swap(*const Vector4f, &p1, &p0);
+    if (p2.y < p1.y) std.mem.swap(*const Vector4f, &p2, &p1);
+    if (p1.y < p0.y) std.mem.swap(*const Vector4f, &p1, &p0);
+
+    const area = Vector4f.triangleArea(p0,p2,p1);
     const ccw  = (area >= 0.0);
 
     self.scanConvertTriangle(p0,p1,p2,ccw);
