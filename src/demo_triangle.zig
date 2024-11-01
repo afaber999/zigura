@@ -56,13 +56,8 @@ pub fn render(self: *Self, dt: f32) bool {
     const p2 = Vertex.initFromVector4f( &transform.transform( &Vector4f.init( 0, 1, 0, 1)));
     const p3 = Vertex.initFromVector4f( &transform.transform( &Vector4f.init( 1,-1, 0, 1)));
 
-    // AF TODO TRANSFORM
     self.canvas.clear(Canvas.from_rgba(0x20, 0x20, 0x20, 0xFF));
     self.canvas.fillTriangle(p1,p2,p3);
-
-    // target.FillTriangle(maxYVert.Transform(transform), 
-    //                 midYVert.Transform(transform), minYVert.Transform(transform));
-
 
     return true;
 }
