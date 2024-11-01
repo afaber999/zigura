@@ -169,13 +169,6 @@ pub fn drawScanBuffer(self : *Self,y:i32, x_min: i32, x_max: i32) void {
     }
 }
 
-pub fn scanConvertTriangle( self:*Self, miny: *const Vector4f, midy:*const Vector4f, maxy:*const Vector4f, ccw : bool) void {
-
-    self.scanConvertLine(miny,maxy,ccw);
-    self.scanConvertLine(miny,midy,!ccw);
-    self.scanConvertLine(midy,maxy,!ccw);
-}
-
 pub fn scanEdges( self:*Self, edge_a: *Edge, edge_b: *Edge, right_side : bool) void {
 
     const left_edge = if (right_side) edge_b else edge_a;
