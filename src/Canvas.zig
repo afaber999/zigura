@@ -162,38 +162,35 @@ pub fn fillShape(self : *Self, y_min:usize, y_max : usize ) void {
 }
 
 
-pub fn scanConvertLine( self:*Self, minY : *const Vector4f, maxY: *const Vector4f, right_side : bool) void {
+pub fn scanConvertLine( self:*Self, miny : *const Vector4f, maxy: *const Vector4f, right_side : bool) void {
 
-    const ys = f32toi32(minY.y);
-    const ye = f32toi32(maxY.y);
+    const ys = f32To(usize, std.math.ceil(miny.y));
+    const ye = f32To(usize, std.math.ceil(maxy.y));
 
-    const xs = f32toi32(minY.x);
-    const xe = f32toi32(maxY.x);
-
-    const dx = xe - xs;
-    const dy = ye - ys;
+    const dx = maxy.x - miny.x;
+    const dy = maxy.y - miny.y;
 
     if (dy<=0.0) return;
 
     const scan_buffer = if (right_side) self.scanbuffer_right else self.scanbuffer_left;
 
-    for (0..@as(usize,@intCast(dy))) |y| {
-    
-        const x = xs + @divFloor(@as(i32,@intCast(y)) * dx, dy);
-        const xb = @min( self.width-1, @as(usize, @intCast( @max(0,x))));
+    const x_step = dx / dy;
+    const y_prestep = @as(f32,@floatFromInt(ys)) - miny.y;
+    var cur_x = miny.x + x_step * y_prestep;
 
-        const idx = (y + @as(usize, @intCast(ys))); 
-        scan_buffer[ idx ] = xb;
+    for ( ys..ye) |y| {
+        scan_buffer[ y ] = f32To(usize, std.math.ceil(cur_x));
+        cur_x += x_step;
         //std.debug.print("y: {}, right side: {}, xb {}\n",.{idx, right_side, xb});
     }
 
 }
 
-pub fn scanConvertTriangle( self:*Self, minY: *const Vector4f, midY:*const Vector4f, maxY:*const Vector4f, ccw : bool) void {
+pub fn scanConvertTriangle( self:*Self, miny: *const Vector4f, midy:*const Vector4f, maxy:*const Vector4f, ccw : bool) void {
 
-    self.scanConvertLine(minY,maxY,ccw);
-    self.scanConvertLine(minY,midY,!ccw);
-    self.scanConvertLine(midY,maxY,!ccw);
+    self.scanConvertLine(miny,maxy,ccw);
+    self.scanConvertLine(miny,midy,!ccw);
+    self.scanConvertLine(midy,maxy,!ccw);
 }
 
 
@@ -218,5 +215,5 @@ pub fn fillTriangle( self:*Self, v1: Vertex, v2: Vertex, v3: Vertex) void {
 
     self.scanConvertTriangle(p0,p1,p2,ccw);
     //std.debug.print("======================== filling shape {} {}\n", .{p0.y, p2.y});
-    self.fillShape(@intFromFloat(p0.y),@intFromFloat(p2.y));
+    self.fillShape(@intFromFloat(std.math.ceil(p0.y)),@intFromFloat(std.math.ceil(p2.y)));
 }
