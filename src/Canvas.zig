@@ -12,8 +12,6 @@ width: usize,
 height: usize,
 stride: usize,
 pixels: []PixelType,
-scanbuffer_left: [] usize,
-scanbuffer_right: [] usize,
 screen_transform : Matrix4f,
 allocator : ?std.mem.Allocator = null,
 
@@ -25,13 +23,40 @@ fn f32To(T:type,f: f32) T {
     return @intFromFloat(f);
 }
 
+fn tof32(i: anytype) f32 {
+    return @floatFromInt(i);
+}
+
+const Edge = struct {
+    x_cur: f32,
+    x_step: f32,
+    y_start: usize,
+    y_end: usize,
+
+    pub fn init(min_y: Vector4f, max_y: Vector4f) Edge {
+        
+        const ys = f32To(usize, std.math.ceil(min_y.y));
+        const ye = f32To(usize, std.math.ceil(max_y.y));
+        const dx = max_y.x - min_y.x;
+        const dy = max_y.y - min_y.y;
+
+        // todo ASSERT dy<=0.0
+        const x_step = dx / dy;
+        const y_prestep = tof32(ys) - min_y.y;
+        const x_cur = min_y.x + x_step * y_prestep;
+
+        return .{ .x_cur = x_cur, .x_step = x_step, .y_start = ys, .y_end = ye };
+    }
+
+    pub fn step(self: *Edge) void {
+        self.x_cur += self.x_step;
+    }
+};
+
+
 pub fn init(allocator: std.mem.Allocator, width: usize, height: usize, stride: usize) !Self {
     const pixels = try allocator.alloc(PixelType, width * height);
     errdefer allocator.free(pixels);
-    const scanbuffer_left = try allocator.alloc(usize, height);
-    errdefer allocator.free(scanbuffer_left);
-    const scanbuffer_right = try allocator.alloc(usize,height);
-    errdefer allocator.free(scanbuffer_right);
 
     const hw  = @as(f32,@floatFromInt(width/2));
     const hh  = @as(f32,@floatFromInt(height/2));
@@ -43,8 +68,6 @@ pub fn init(allocator: std.mem.Allocator, width: usize, height: usize, stride: u
         .height = height,
         .stride = stride,
         .pixels = pixels,
-        .scanbuffer_left = scanbuffer_left,
-        .scanbuffer_right = scanbuffer_right,
         .screen_transform = screen_transform,
         .allocator = allocator,
     };
@@ -53,8 +76,6 @@ pub fn init(allocator: std.mem.Allocator, width: usize, height: usize, stride: u
 pub fn deinit(self: Self) void {
     if (self.allocator) |allocator| {
         allocator.free(self.pixels);
-        allocator.free(self.scanbuffer_left);
-        allocator.free(self.scanbuffer_right);
     }
 }
 
@@ -148,44 +169,6 @@ pub fn drawScanBuffer(self : *Self,y:i32, x_min: i32, x_max: i32) void {
     }
 }
 
-pub fn fillShape(self : *Self, y_min:usize, y_max : usize ) void {
-    for (y_min..y_max) |y| {
-        const xs = self.scanbuffer_left[y];
-        const xe = self.scanbuffer_right[y];
-
-        //std.debug.print("y: {}, xs: {}, xe: {}\n",.{y, xs, xe});
-
-        for (xs .. xe) |x| {
-            self.setPixel(x, y, 0xFFFFFFFF);
-        }
-    }
-}
-
-
-pub fn scanConvertLine( self:*Self, miny : *const Vector4f, maxy: *const Vector4f, right_side : bool) void {
-
-    const ys = f32To(usize, std.math.ceil(miny.y));
-    const ye = f32To(usize, std.math.ceil(maxy.y));
-
-    const dx = maxy.x - miny.x;
-    const dy = maxy.y - miny.y;
-
-    if (dy<=0.0) return;
-
-    const scan_buffer = if (right_side) self.scanbuffer_right else self.scanbuffer_left;
-
-    const x_step = dx / dy;
-    const y_prestep = @as(f32,@floatFromInt(ys)) - miny.y;
-    var cur_x = miny.x + x_step * y_prestep;
-
-    for ( ys..ye) |y| {
-        scan_buffer[ y ] = f32To(usize, std.math.ceil(cur_x));
-        cur_x += x_step;
-        //std.debug.print("y: {}, right side: {}, xb {}\n",.{idx, right_side, xb});
-    }
-
-}
-
 pub fn scanConvertTriangle( self:*Self, miny: *const Vector4f, midy:*const Vector4f, maxy:*const Vector4f, ccw : bool) void {
 
     self.scanConvertLine(miny,maxy,ccw);
@@ -193,6 +176,43 @@ pub fn scanConvertTriangle( self:*Self, miny: *const Vector4f, midy:*const Vecto
     self.scanConvertLine(midy,maxy,!ccw);
 }
 
+pub fn scanEdges( self:*Self, edge_a: *Edge, edge_b: *Edge, right_side : bool) void {
+
+    const left_edge = if (right_side) edge_b else edge_a;
+    const right_edge = if (right_side) edge_a else edge_b;
+
+    const ys = edge_b.y_start;
+    const ye = edge_b.y_end;
+
+    for (ys..ye) |y| {
+        self.drawScanLine(left_edge, right_edge, y);
+        left_edge.step();
+        right_edge.step();
+    }
+}
+
+
+pub fn scanTriangle( self:*Self, miny: *const Vector4f, midy:*const Vector4f, maxy:*const Vector4f, ccw : bool) void {
+
+    var t2b = Edge.init(miny.*,maxy.*);
+    var t2m = Edge.init(miny.*,midy.*);
+    var m2b = Edge.init(midy.*,maxy.*);
+
+    self.scanEdges(&t2b,&t2m,ccw);
+    self.scanEdges(&t2b,&m2b,ccw);
+}
+
+
+pub fn drawScanLine(self: *Self,left_edge : *const Edge, right_edge : *const Edge, y : usize) void {    
+
+    const xs = left_edge.x_cur;
+    const xe = right_edge.x_cur;
+
+    // AF TODO check bounds conditions?
+    for ( f32To(usize,xs) .. f32To(usize,xe)) |x| {
+        self.setPixel(x, y, 0xFFFFFFFF);
+    }
+}
 
 pub fn fillTriangle( self:*Self, v1: Vertex, v2: Vertex, v3: Vertex) void {
 
@@ -213,7 +233,7 @@ pub fn fillTriangle( self:*Self, v1: Vertex, v2: Vertex, v3: Vertex) void {
     const area = Vector4f.triangleArea(p0,p2,p1);
     const ccw  = (area >= 0.0);
 
-    self.scanConvertTriangle(p0,p1,p2,ccw);
+     self.scanTriangle(p0,p1,p2,ccw);
     //std.debug.print("======================== filling shape {} {}\n", .{p0.y, p2.y});
-    self.fillShape(@intFromFloat(std.math.ceil(p0.y)),@intFromFloat(std.math.ceil(p2.y)));
+    //self.fillShape(@intFromFloat(std.math.ceil(p0.y)),@intFromFloat(std.math.ceil(p2.y)));
 }
